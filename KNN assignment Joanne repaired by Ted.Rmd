@@ -1,0 +1,163 @@
+---
+title: "Assigment - kNN DIY"
+author:
+  - Dewi Joanne - Author
+  - Ted van Deelen - Reviewer
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+   html_notebook:
+    toc: true
+    toc_depth: 2
+---
+#Setup
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(class)
+library(caret)
+
+require(class)
+```
+
+---
+
+Choose a suitable dataset from [this](https://github.com/HAN-M3DM-Data-Mining/assignments/tree/master/datasets) folder and train  your own kNN model. Follow all the steps from the CRISP-DM model.
+
+
+## Business Understanding
+
+This project will perform a classification K-nearest Neighbours (KNN) on an Occupancy Detection dataset for classifying the occupancy.
+
+The k-nearest neighbours’ algorithm (k-NN) is a non-parametric method used for classification and regression [1].
+
+In k-NN classification, the output is a class membership. An object is classified by a plurality vote of its neighbours, with the object being assigned to the class most common among its k nearest neighbours (k is a positive integer, typically small). If k = 1, then the object is simply assigned to the class of that single nearest neighbour.
+
+[KNN-occupancy.csv](https://archive.ics.uci.edu/ml/datasets/Occupancy+Detection+)
+
+The accuracy of the prediction of occupancy in an office room using data from light, temperature, humidity and CO2 sensors has been evaluated with different statistical classification models using the open source program R. Three data sets were used in this work, one for training, and two for testing the models considering the office door opened and closed during occupancy. 
+
+## Data Understanding
+The data we will be using comes from the University of Wisconsin and is available online as an open source dataset https://archive.ics.uci.edu/ml/datasets/Occupancy+Detection+ (UCI Machine Learning Repository: Occupancy Detection Data Set). 
+
+Experimental data used for binary classification (room occupancy) from Temperature,Humidity,Light and CO2. Ground-truth occupancy was obtained from time stamped pictures that were taken every minute.
+
+
+Attribute Information:
+
+date time year-month-day hour:minute:second
+Temperature, in Celsius
+Relative Humidity, %
+Light, in Lux
+CO2, in ppm
+Humidity Ratio, Derived quantity from temperature and relative humidity, in kgwater-vapor/kg-air
+Occupancy, 0 or 1, 0 for not occupied, 1 for occupied status
+
+```{r}
+url <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/data-mining-s2y2122-dewijoanne/master/datasets/KNN-occupancy.csv"
+occupancy_data <- read_csv(url)
+View(occupancy_data)
+```
+Using the str() function we can have some basic information about the dataset.
+
+```{r}
+str(occupancy_data)
+```
+The dataset has 7 variables (columns) and 8,143 observations (rows).
+
+```{r}
+names(occupancy_data)
+head(occupancy_data)
+tail(occupancy_data)
+summary(occupancy_data)
+```
+
+
+## Data Preparation
+
+The first variable, id, contains unique patient IDs. The IDs do not contain any relevant information for making predictions, so we will delete it from the dataset.
+
+```{r}
+new_occupancy_data <- occupancy_data[-1]
+head(new_occupancy_data)
+```
+
+The variable named occupancy contains the outcomes we would like to predict - ‘1’ for ‘Occupied’ and ‘0’ for ‘Not Occupied.’ The variable we would like to predict is called the ‘label.’ We can look at the counts and proportions for both outcomes, using the tables() and prop.tables()functions.
+
+```{r}
+countOccu <- table(new_occupancy_data$Occupancy)
+propOccu <- round(prop.table(countOccu) * 100, digits = 0)
+
+countOccu
+propOccu
+```
+
+The variable is now coded as a type character. Many models require that the label is of type factor. This is easily solved using the factor() function.
+
+```{r}
+new_occupancy_data$Occupancy <- factor(new_occupancy_data$Occupancy, levels = c("1", "0"), labels = c("Occupied", "Not Occupied")) %>% relevel ("Not Occupied")
+head(new_occupancy_data, 10)
+```
+
+The features consist of different situation for measuerments. We will take the first three and have a closer look.
+
+```{r}
+summary(new_occupancy_data[c("Temperature", "Humidity", "Light")])
+```
+The three variables have very different ranges, This could potentially cause problems for modeling. To solve this we’ll apply normalization to rescale all features to a standard range of values.
+
+```{r}
+normalize <- function(x){return((x - min(x))/ (max(x) - min(x)))}
+
+testSet1 <- c(1:5)
+testSet2 <- c(1:5) * 10
+
+cat("testSet1:", testSet1, "\n")
+cat("testSet2:", testSet2, "\n")
+
+cat("Normalized testSet1:", normalize(testSet1), "\n")
+cat("Normalized testSet2:", normalize(testSet2))
+```
+
+```{r}
+nCols <- dim(new_occupancy_data)[2]
+cleanDF_n <- sapply(1:5,function(x) 
+  {normalize(new_occupancy_data[,x])}) %>% as.data.frame()
+```
+
+```{r}
+summary(cleanDF_n)
+```
+
+When we take the variables we selected earlier and look at the summary parameters again, we’ll see that the normalization was successful.
+
+We can now split our data into training and test sets.
+
+```{r}
+train_df <- cleanDF_n[1:6526, ]
+test_df <- cleanDF_n[6527:8143, ]
+```
+
+When creating the training and test sets, we’ve excluded the labels. We’ll create separate training and tests sets for them too.
+
+```{r}
+train_label <- new_occupancy_data[1:6526, 6]
+test_label <- new_occupancy_data[6527:8143, 6]
+```
+
+
+## Modeling
+To train the KNN model we only need one single function from the class package. It takes the set with training features and the set with training label. The trained model is applied to the set with test features and the function gives back a set of predictions.
+
+```{r}
+occupancy_test_pred <- knn(train = as.matrix(train_df), test = as.matrix(test_df), cl = as.matrix(train_label), k = 21)
+head(occupancy_test_pred)
+```
+
+## Evaluation and Deployment
+Now that we have a set of predicted labels we can compare these with the actual labels. A diffusion table shows how well the model performed.
+
+
+```{r}
+confusionMatrix(occupancy_test_pred, test_label[[1]], positive = NULL, dnn = c("Prediction", "True"))
+```
