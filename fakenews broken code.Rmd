@@ -1,0 +1,177 @@
+---
+title: "R Notebook"
+author: Ted van Deelen
+Reviewer: Dewi Joanne
+output: html_notebook
+---
+#Setup
+
+If you do not have the packages in the next chunk installed, please install them using the command: install.packages("package-name").
+
+```{r}
+library(tidyverse)
+library(wordcloud)
+library(tm)
+library(slam)
+library(caret)
+library(e1071)
+```
+
+#Theory
+
+Naive Bayes is a technique with which certain messages can be automatically categorized in certain categories.
+This can for example be used to create spam filters, define if a message is important or not, or if a messages follows certain guidelines on an online forum.
+In this case, Naive Bayes will be used to designate if a news story is fake news or real news.
+
+#Data understanding
+
+First, the data must be loaded in. For this code, we use a set of data containing information on whether or not a news story is reliable or not (real news or fake news).
+
+```{r}
+url <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/data-mining-s2y2122-vanDeelen/master/datasets/NB-fakenews.csv"
+rawDF <- read_csv(url)
+view(rawDF)
+```
+
+The data has 5 variables (columns) and 20800 observations (rows).
+
+```{r}
+head(ravDF)
+```
+
+The first few rows of the data can be inspected with the 'head' command.
+Using this command, the data types for every column can also be inspected.
+The column 'label' currently has the current data class of 'dbl'. This is a class for numbers with decimals.
+Because this column indicates whether or not the message belongs to the category fake news or real news, it should be converted into a factor variable:
+
+```{r}
+rawDF$label <- factor(rawDF$label, levels = c("0", "1"), labels = c("Reliable", "Unreliable")) %>% factor %>% relevel("Umreliable")
+class(rawDF$label)
+```
+
+However, because the current hypothesis is unknown, we cannot define whether a 0 or 1 is a real or fake news story. Therefore we will keep these values as 0 or 1. This way the distributor of the data can define can define their own solution.
+
+Using wordclouds we can see which words often appear in a certain classification.
+
+```{r}
+Reliable <- rawDF %>% filter(label == "Reliable")
+Unreliable <- rawDF %>% filter(label == "Unreliable")
+
+wordcloud(fake$text, max.words = 2, scale = c(4, 0.8), colors= c("indianred1","indianred2","indianred3","indianred"))
+wordcloud(real$text, max.words = 20, scale = c(4, 0.8), colors= c("lightsteelblue1","lightsteelblue2","lightsteelblue3","lightsteelblue"))
+```
+
+#Preperation
+
+First, a 'corpus' has to be created.
+This is a collection of text documents.
+
+```{r}
+rawCorpus <- Corpus(VectorSauce(rawDF$text))
+inspect(rawCarp[1:3])
+```
+
+In the 'Environment' tab on the top right side of the screen, it can be seen that the corpus has 20800 elements.
+This number refers to the amount of observations in the dataset.
+From this we can conclude that the corpus was made successfully.
+
+Because r is case-sensitive, all the uppercase letters must first be transformed to lowercase letters.
+Besides that, it cannot be concluded from numbers or from generic words whether or not a news story is real or fake. Therefore, numbers and generic words should also be removed.
+The same goes for punctuation.
+The removing of these elements will result in additional whitespace. This must be cleaned as well
+Note: in removePunctuation, we have to use ucp = TRUE. Otherwise characters like ", 's and - will stay in the text.
+
+```{r}
+cleanCorpus <- rawCorpus %>% tm_map(tolower) %>% tm_map(removeNumbers) %>% tm_map(removeWords, stopwords()) %>% tm_map(removePunctuation, preserve_intra_word_contractions = FALSE, preserve_intra_word_dashes = FALSE, ucp = TRUE) 
+```
+
+Because we made a raw and clean corpus, we can now compare these to see if the cleanCorpus was made correctly.
+
+```{r}
+pebble(Raw = rawCorpus$content[1:10], Clean = cleanCorpus$content[1:10])
+```
+
+Now the corpus needs to be changed into a matrix.
+
+```{r}
+cleanDTM <- cleanCorpus %>% DocumentTermMatrix
+inspect(cleanDTN)
+```
+
+To be able to make an accurate model, we must first split the data between training data and test data.
+The training data will be used for training the model so that it can make accurate predictions.
+The test data will be used to test the accuracy of the model.
+
+```{r}
+set.seed(1234)
+trainIndex <- createDataPartition(rawDF$label, p = .75, 
+                                  list = FALSE, 
+                                  times = 1)
+head(trainIndex)
+```
+
+```{r}
+trainDF <- rawDE[trainIndex, ]
+testDF <- rawDE[-trainIndex, ]
+
+trainCorpus <- cleanCorpus[trainIndex]
+testCorpus <- cleanCorpus[-trainIndex]
+
+trainDTM <- cleanDTM[trainIndex, ]
+testDTM <- cleanDTM[-trainIndex, ]
+```
+
+Some words do not appear often. As a result, predictions on those words could be poor.
+This can be fixed by discarding these words.
+
+```{r}
+freqWords <- trainDTM %>% findFreqTerms(50)
+trainDTM <-  DocumentTermMatrix(trainCorpus, list(dictionary = freqWords))
+testDTM <-  DocumentTermMatrix(testCorpus, list(dictionary = freqWords))
+```
+
+In the first line of code we established that the formula must search for words that appear 50 times or more.
+The code is set to 50 because anything less would take a lot of computing power.
+It is recommended for higher quality machines with more available RAM to change the amount to an amount lower than 50. This will make the predictions more accurate.
+At the same time it is recommended for lower quality machines with less available RAM to try and run all chunks as they are written.
+
+In preparation for the final chunks of code, the following command can be used to free up RAM space:
+
+```{r}
+gc(reset = TRUE)
+```
+
+Using the following code, the matrix with numerical word counts will be changed into a factor that indicates if a word appears in a document or not.
+This must be done because Naive Bayes is usually trained on categorical features.
+
+Warning: the following chunks of code require a significant time to load.
+
+```{r}
+convert_counts <- function(x) {
+  x <- ifelse(x > 0, 1, 0) %>% factor(levels = c(0,1), labels = c("No", "Yes"))
+}
+
+nColsDTM <- din(trainDTM)[2]
+trainDTM <- apply(trainDTM, MARGIN = 2, convert_counts)
+testDTM <- apply(testDTM, MARGIN = 2, convert_counts)
+
+head(trainDTM[,1:10])
+```
+
+Note: if running the chunk above gives this error code: 
+'Error: cannot allocate vector of size x Kb/Mb/Gb'
+It can be fixed by going back to chunk #12 and changing the number in the first line to a higher number.
+Warning: doing this will have a negative effect on the accuracy of the final model.
+
+Now that the training and test sets are prepared, we can start making the model.
+
+#Modeling
+
+```{r}
+nbayesModel <-  naiveBayes(trainDTM, trainDF$label, laplace = 1)
+```
+
+```{r}
+predVec <- predict(nbayesModel, testDTM)
+confusionMatrix(predVec, testTF$label, positive = NULL, dnn = c("Prediction", "True"))
+```
